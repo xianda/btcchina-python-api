@@ -25,17 +25,14 @@ def php_str(v):
 
 
 class BTCException(Exception):
-    def __init__(self, info):
-        self.message = info
-
-    def __str__(self):
-        return repr(self.message)
+    pass
 
 
 class BTCChina():
     def __init__(self, access=None, secret=None):
         self.access_key = access
         self.secret_key = secret
+        self.conn = httplib.HTTPSConnection("api.btcchina.com")
 
     def _get_tonce(self):
         return int(time.time() * 1000000)
@@ -82,39 +79,39 @@ class BTCChina():
             'Connection': 'Keep-Alive'}
 
         # post_data dictionary passed as JSON
-        conn = httplib.HTTPSConnection("api.btcchina.com")
-        conn.request('POST', '/api_trade_v1.php',
+        self.conn.request('POST', '/api_trade_v1.php',
                      json.dumps(post_data), headers)
-        response = conn.getresponse()
+        response = self.conn.getresponse()
 
         # check response code, ID, and existence of 'result' or 'error'
         # before passing a dict of results
-        if response.status == 200:
-            # this might fail if non-json data is returned
-            result = response.read()
-            try:
-                resp_dict = json.loads(result)
-            except ValueError:
-                raise BTCException('No JSON object is returned: ' + result)
+        if response.status != 200:
+            response.close()
+            raise BTCException('Bad HTTP response: ' + \
+                    str({'code': response.status, 'reason': response.reason}))
 
-            # The id's may need to be used by the calling application,
-            # but for now, check and discard from the return dict.
-            # The caller need to check 'result' or 'error'.
-            if str(resp_dict['id']) == str(post_data['id']):
-                return resp_dict
-        else:
-            return {'code': response.status, 'message': response.reason}
+        result = response.read()
+        try:
+            resp_dict = json.loads(result)
+        except ValueError:
+            raise BTCException('No JSON object is returned: ' + result)
 
-        return None
+        # The id may need to be used by the calling application,
+        # but for now, check and discard from the return dict.
+        # The caller need to check 'result' or 'error'.
+        if str(resp_dict['id']) != str(post_data['id']):
+            return None
+
+        if 'result' not in resp_dict:
+            resp_dict.update({'params': post_data})
+            raise BTCException(str(resp_dict))
+
+        return resp_dict
+
 
     def __getattr__(self, method):
         def function(params=[]):
-            post_data = {'method': method, 'params': params}
-            result = self._private_request(post_data)
-            if 'result' not in result:
-                result.update({'params': params})
-                raise BTCException(str(result))
-            return result['result']
+            return self._private_request({'method': method, 'params': params})
         return function
 
 
