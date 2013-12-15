@@ -106,7 +106,7 @@ class BTCChina():
             resp_dict.update({'params': post_data})
             raise BTCException(str(resp_dict))
 
-        return resp_dict
+        return resp_dict['result']
 
 
     def __getattr__(self, method):
